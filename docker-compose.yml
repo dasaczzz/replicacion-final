@@ -9,6 +9,7 @@ services:
     volumes:
       - ./custom.cnf:/etc/mysql/conf.d/custom.cnf
       - ./init-user.sql:/docker-entrypoint-initdb.d/init-user.sql
+      - ./certs:/var/lib/mysql/certs
     ports:
       - "3306:3306"
     networks:
@@ -21,6 +22,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     volumes:
       - ./custom-replica.cnf:/etc/mysql/conf.d/custom.cnf
+      - ./certs:/var/lib/mysql/certs
     ports:
       - "3307:3306"
     depends_on:

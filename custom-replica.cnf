@@ -4,3 +4,10 @@ bind-address=0.0.0.0
 log_bin=mysql-bin
 binlog_do_db=replicacion
 relay-log=mysql-relay-bin
+
+replicate-ignore-db=mysql
+
+# SSL config
+ssl-ca=/var/lib/mysql/certs/ca.pem
+ssl-cert=/var/lib/mysql/certs/client-cert.pem
+ssl-key=/var/lib/mysql/certs/client-key.pem

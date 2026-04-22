@@ -8,3 +8,9 @@ log_bin=mysql-bin
 binlog_format=ROW
 
 binlog_do_db=replicacion
+
+# SSL configs
+ssl-ca=/var/lib/mysql/certs/ca.pem
+ssl-cert=/var/lib/mysql/certs/server-cert.pem
+ssl-key=/var/lib/mysql/certs/server-key.pem
+require_secure_transport = ON
