@@ -56,7 +56,12 @@ SOURCE_HOST='db-source',
 SOURCE_USER='user',
 SOURCE_PASSWORD='password',
 SOURCE_LOG_FILE='mysql-bin.000001',
-SOURCE_LOG_POS=1;
+SOURCE_LOG_POS=1
+SOURCE_SSL=1,
+SOURCE_SSL_CA='/etc/mysql/certs/ca.pem',
+SOURCE_SSL_CERT='/etc/mysql/certs/client-cert.pem',
+SOURCE_SSL_KEY='/etc/mysql/certs/client-key.pem'
+;
 
 START REPLICA;
 ```
