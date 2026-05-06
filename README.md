@@ -60,8 +60,7 @@ SOURCE_LOG_POS=1
 SOURCE_SSL=1,
 SOURCE_SSL_CA='/etc/mysql/certs/ca.pem',
 SOURCE_SSL_CERT='/etc/mysql/certs/client-cert.pem',
-SOURCE_SSL_KEY='/etc/mysql/certs/client-key.pem'
-;
+SOURCE_SSL_KEY='/etc/mysql/certs/client-key.pem';
 
 START REPLICA;
 ```
