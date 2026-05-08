@@ -4,13 +4,16 @@ server-id=1
 bind-address=0.0.0.0
 
 log_bin=mysql-bin
+gtid_mode=ON
+enforce_gtid_consistency=ON
 
+log_replica_updates=ON
 binlog_format=ROW
 
 binlog_do_db=replicacion
 
 # SSL configs
-ssl-ca=/var/lib/mysql/certs/ca.pem
-ssl-cert=/var/lib/mysql/certs/server-cert.pem
-ssl-key=/var/lib/mysql/certs/server-key.pem
+ssl-ca=/etc/mysql/certs/ca.pem
+ssl-cert=/etc/mysql/certs/server-cert.pem
+ssl-key=/etc/mysql/certs/server-key.pem
 require_secure_transport = ON

@@ -1,32 +1,56 @@
 services:
-  master:
+  source:
     image: mysql:8.0
     container_name: db-source
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
     volumes:
       - ./custom.cnf:/etc/mysql/conf.d/custom.cnf
-      - ./init-user.sql:/docker-entrypoint-initdb.d/init-user.sql
-      - ./certs:/var/lib/mysql/certs
+      - ./init-user.sh:/docker-entrypoint-initdb.d/init-user.sh
+      - ./certs:/etc/mysql/certs
     ports:
       - "3306:3306"
     networks:
       - db-network
 
-  replica:
+  replica1:
     image: mysql:8.0
-    container_name: db-replica
+    container_name: db-replica1
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
     volumes:
       - ./custom-replica.cnf:/etc/mysql/conf.d/custom.cnf
-      - ./certs:/var/lib/mysql/certs
+      - ./init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh  
+      - ./certs:/etc/mysql/certs
     ports:
       - "3307:3306"
     depends_on:
-      - master
+      - source
+    networks:
+      - db-network
+
+  replica2:
+    image: mysql:8.0
+    container_name: db-replica2
+    command: --server-id=3
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./custom-replica.cnf:/etc/mysql/conf.d/custom.cnf
+      - ./init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh
+      - ./certs:/etc/mysql/certs
+    ports:
+      - "3308:3306"
+    depends_on:
+        - source
     networks:
       - db-network
 

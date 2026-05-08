@@ -1,0 +1,8 @@
+#!/bin/bash
+
+mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" <<EOF
+
+GRANT REPLICATION SLAVE ON *.* TO '${DB_USER}'@'%';
+FLUSH PRIVILEGES;
+
+EOF
