@@ -1,59 +1,144 @@
 services:
+  certs-gen:
+    image: alpine:3.20
+    container_name: db-certs-gen
+    volumes:
+      - ./certs:/certs
+      - ./generate-certs.sh:/generate-certs.sh:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache openssl >/dev/null && sh /generate-certs.sh"]
+
   source:
     image: mysql:8.0
     container_name: db-source
+    # Configuracion de mysqld pasada por flags (equivalente a un my.cnf).
+    # Se usa command: en vez de montar un .cnf porque al hacer bind-mount
+    # desde Windows el archivo aparece world-writable dentro del contenedor
+    # y MySQL lo ignora por seguridad ("World-writable config file ... is ignored").
+    command:
+      - --server-id=1
+      - --bind-address=0.0.0.0
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --log-replica-updates=ON
+      - --ssl-ca=/etc/mysql/certs/ca.pem
+      - --ssl-cert=/etc/mysql/certs/server-cert.pem
+      - --ssl-key=/etc/mysql/certs/server-key.pem
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: replicacion
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./custom.cnf:/etc/mysql/conf.d/custom.cnf
-      - ./init-user.sh:/docker-entrypoint-initdb.d/init-user.sh
+      - ./init-user.sh:/docker-entrypoint-initdb.d/00-init-user.sh
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql
       - ./certs:/etc/mysql/certs
-    ports:
-      - "3306:3306"
+      - source-data:/var/lib/mysql
+    depends_on:
+      certs-gen:
+        condition: service_completed_successfully
     networks:
       - db-network
 
   replica1:
     image: mysql:8.0
     container_name: db-replica1
+    command:
+      - --server-id=2
+      - --bind-address=0.0.0.0
+      - --log-bin=mysql-bin
+      - --relay-log=mysql-relay-bin
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --log-replica-updates=ON
+      - --read-only=ON
+      - --replicate-ignore-db=mysql
+      - --ssl-ca=/etc/mysql/certs/ca.pem
+      - --ssl-cert=/etc/mysql/certs/client-cert.pem
+      - --ssl-key=/etc/mysql/certs/client-key.pem
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./custom-replica.cnf:/etc/mysql/conf.d/custom.cnf
-      - ./init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh  
+      - ./init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh
       - ./certs:/etc/mysql/certs
-    ports:
-      - "3307:3306"
+      - replica1-data:/var/lib/mysql
     depends_on:
-      - source
+      certs-gen:
+        condition: service_completed_successfully
+      source:
+        condition: service_started
     networks:
       - db-network
 
   replica2:
     image: mysql:8.0
     container_name: db-replica2
-    command: --server-id=3
+    command:
+      - --server-id=3
+      - --bind-address=0.0.0.0
+      - --log-bin=mysql-bin
+      - --relay-log=mysql-relay-bin
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --log-replica-updates=ON
+      - --read-only=ON
+      - --replicate-ignore-db=mysql
+      - --ssl-ca=/etc/mysql/certs/ca.pem
+      - --ssl-cert=/etc/mysql/certs/client-cert.pem
+      - --ssl-key=/etc/mysql/certs/client-key.pem
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./custom-replica.cnf:/etc/mysql/conf.d/custom.cnf
       - ./init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh
       - ./certs:/etc/mysql/certs
-    ports:
-      - "3308:3306"
+      - replica2-data:/var/lib/mysql
     depends_on:
-        - source
+      certs-gen:
+        condition: service_completed_successfully
+      source:
+        condition: service_started
+    networks:
+      - db-network
+
+  nginx:
+    image: nginx:1.27
+    container_name: db-nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "3306:3306"  # escritura -> maestro
+      - "3307:3307"  # lectura  -> esclavos (balanceado)
+    depends_on:
+      - source
+      - replica1
+      - replica2
+    networks:
+      - db-network
+
+  sysbench:
+    image: severalnines/sysbench:latest
+    container_name: db-sysbench
+    depends_on:
+      - nginx
+    volumes:
+      - ./sysbench:/scripts
+    working_dir: /scripts
+    entrypoint: ["sleep", "infinity"]
     networks:
       - db-network
 
 networks:
   db-network:
     driver: bridge
+
+volumes:
+  source-data:
+  replica1-data:
+  replica2-data:
