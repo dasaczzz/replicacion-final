@@ -5,16 +5,17 @@ services:
     volumes:
       - ./certs:/certs
       - ./generate-certs.sh:/generate-certs.sh:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["apk add --no-cache openssl >/dev/null && sh /generate-certs.sh"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache openssl >/dev/null
+        sed 's/\r$//' /generate-certs.sh | sh
 
   source:
     image: mysql:8.0
     container_name: db-source
-    # Configuracion de mysqld pasada por flags (equivalente a un my.cnf).
-    # Se usa command: en vez de montar un .cnf porque al hacer bind-mount
-    # desde Windows el archivo aparece world-writable dentro del contenedor
-    # y MySQL lo ignora por seguridad ("World-writable config file ... is ignored").
+    hostname: db-source
     command:
       - --server-id=1
       - --bind-address=0.0.0.0
@@ -32,11 +33,19 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./init-user.sh:/docker-entrypoint-initdb.d/00-init-user.sh
+      - ./init-user.sh:/scripts-raw/init-user.sh:ro
       - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./data.sql:/docker-entrypoint-initdb.d/02-data.sql
       - ./certs:/etc/mysql/certs
       - source-data:/var/lib/mysql
+    entrypoint:
+      - bash
+      - -c
+      - |
+        sed 's/\r$//' /scripts-raw/init-user.sh > /docker-entrypoint-initdb.d/00-init-user.sh
+        chmod +x /docker-entrypoint-initdb.d/00-init-user.sh
+        exec docker-entrypoint.sh mysqld "$@"
+      - bash
     depends_on:
       certs-gen:
         condition: service_completed_successfully
@@ -46,6 +55,7 @@ services:
   replica1:
     image: mysql:8.0
     container_name: db-replica1
+    hostname: db-replica1
     command:
       - --server-id=2
       - --bind-address=0.0.0.0
@@ -64,9 +74,17 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh
+      - ./init-replica.sh:/scripts-raw/init-replica.sh:ro
       - ./certs:/etc/mysql/certs
       - replica1-data:/var/lib/mysql
+    entrypoint:
+      - bash
+      - -c
+      - |
+        sed 's/\r$//' /scripts-raw/init-replica.sh > /docker-entrypoint-initdb.d/init-replica.sh
+        chmod +x /docker-entrypoint-initdb.d/init-replica.sh
+        exec docker-entrypoint.sh mysqld "$@"
+      - bash
     depends_on:
       certs-gen:
         condition: service_completed_successfully
@@ -78,6 +96,7 @@ services:
   replica2:
     image: mysql:8.0
     container_name: db-replica2
+    hostname: db-replica2
     command:
       - --server-id=3
       - --bind-address=0.0.0.0
@@ -96,9 +115,17 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh
+      - ./init-replica.sh:/scripts-raw/init-replica.sh:ro
       - ./certs:/etc/mysql/certs
       - replica2-data:/var/lib/mysql
+    entrypoint:
+      - bash
+      - -c
+      - |
+        sed 's/\r$//' /scripts-raw/init-replica.sh > /docker-entrypoint-initdb.d/init-replica.sh
+        chmod +x /docker-entrypoint-initdb.d/init-replica.sh
+        exec docker-entrypoint.sh mysqld "$@"
+      - bash
     depends_on:
       certs-gen:
         condition: service_completed_successfully
@@ -128,9 +155,19 @@ services:
     depends_on:
       - nginx
     volumes:
-      - ./sysbench:/scripts
-    working_dir: /scripts
-    entrypoint: ["sleep", "infinity"]
+      - ./sysbench:/scripts-raw:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /scripts
+        for f in /scripts-raw/*.sh; do
+          name=$$(basename "$$f")
+          sed 's/\r$$//' "$$f" > "/scripts/$$name"
+          chmod +x "/scripts/$$name"
+        done
+        cd /scripts
+        exec sleep infinity
     networks:
       - db-network
 
