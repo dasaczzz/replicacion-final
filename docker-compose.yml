@@ -140,8 +140,8 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "3306:3306"  # escritura -> maestro
-      - "3307:3307"  # lectura  -> esclavos (balanceado)
+      - "3306:3306" # escritura -> maestro
+      - "3307:3307" # lectura  -> esclavos (balanceado)
     depends_on:
       - source
       - replica1
@@ -168,6 +168,48 @@ services:
         done
         cd /scripts
         exec sleep infinity
+    networks:
+      - db-network
+
+  web:
+    image: httpd:2.4
+    container_name: db-web
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/usr/local/apache2/htdocs/:ro
+    networks:
+      - db-network
+
+  api:
+    build: ./api
+    container_name: db-api
+    ports:
+      - "5001:5000"
+    environment:
+      DB_HOST_WRITE: db-nginx
+      DB_HOST_READ: db-nginx
+      DB_PORT_WRITE: 3306
+      DB_PORT_READ: 3307
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      DB_NAME: replicacion
+    depends_on:
+      - nginx
+    volumes:
+      - ./sysbench:/scripts-raw:ro
+    entrypoint:
+      - bash
+      - -c
+      - |
+        mkdir -p /scripts
+        for f in /scripts-raw/*.sh; do
+          name=$$(basename "$$f")
+          sed 's/\r$$//' "$$f" > "/scripts/$$name"
+          chmod +x "/scripts/$$name"
+        done
+        python app.py
     networks:
       - db-network
 

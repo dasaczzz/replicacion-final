@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MySQL Cluster Monitor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header>
+    <h1>MySQL <span>Cluster Monitor</span></h1>
+    <div id="cluster-badge">Verificando...</div>
+  </header>
+  <nav>
+    <button class="active" onclick="show('health',this)">Health</button>
+    <button onclick="show('replication',this)">Replicación</button>
+    <button onclick="show('balance',this)">Balanceo</button>
+    <button onclick="show('nodes',this)">Nodos</button>
+    <button onclick="show('data',this)">Datos</button>
+    <button onclick="show('sysbench',this)">Sysbench</button>
+  </nav>
+  <main>
+
+    <!-- HEALTH -->
+    <section id="s-health" class="section-active">
+      <h2>Estado del Clúster</h2>
+      <div class="grid" id="health-grid">
+        <div class="card">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      <br><button class="btn" onclick="loadHealth()">↺ Refrescar</button>
+    </section>
+
+    <!-- REPLICATION -->
+    <section id="s-replication">
+      <h2>Estado de Replicación</h2>
+      <div class="grid" id="rep-grid">
+        <div class="card">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      <br><button class="btn" onclick="loadReplication()">↺ Refrescar</button>
+    </section>
+
+    <!-- BALANCE -->
+    <section id="s-balance">
+      <h2>Demostración de Balanceo (Round-Robin)</h2>
+      <div class="card" style="max-width:500px;margin-bottom:1rem">
+        <div class="form-row">
+          <div><label>Número de conexiones</label><input id="bal-n" type="number" value="10" min="1" max="50"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn" onclick="loadBalance()">▶ Ejecutar</button>
+          </div>
+        </div>
+      </div>
+      <div id="balance-result"></div>
+    </section>
+
+    <!-- NODES -->
+    <section id="s-nodes">
+      <h2>Información de Nodos</h2>
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Nodo</th>
+              <th>Rol</th>
+              <th>Hostname</th>
+              <th>Server ID</th>
+            </tr>
+          </thead>
+          <tbody id="nodes-body">
+            <tr>
+              <td colspan="4">
+                <div class="spinner"></div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <br><button class="btn" onclick="loadNodes()">↺ Refrescar</button>
+    </section>
+
+    <!-- DATA -->
+    <section id="s-data">
+      <h2>Explorador de Datos</h2>
+      <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
+        <button class="btn" onclick="loadData('users','read')">👤 Usuarios (esclavo)</button>
+        <button class="btn" onclick="loadData('users','write')">👤 Usuarios (maestro)</button>
+        <button class="btn btn-green" onclick="loadData('posts','read')">📝 Posts (esclavo)</button>
+        <button class="btn btn-green" onclick="loadData('posts','write')">📝 Posts (maestro)</button>
+      </div>
+      <div id="data-result"></div>
+    </section>
+
+    <!-- SYSBENCH -->
+    <section id="s-sysbench">
+      <h2>Sysbench Benchmarks</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="card-title">Preparar Dataset</div>
+          <div class="form-row">
+            <div><label>Filas</label><input id="sb-rows" type="number" value="1000000"></div>
+            <div><label>Tablas</label><input id="sb-tables" type="number" value="1"></div>
+          </div>
+          <button class="btn btn-yellow" id="btn-prepare" onclick="sbPrepare()">⚙ Preparar</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Benchmark Solo Lectura</div>
+          <div class="form-row">
+            <div><label>Hilos</label><input id="sb-r-threads" type="number" value="10"></div>
+            <div><label>Tiempo (s)</label><input id="sb-r-time" type="number" value="60"></div>
+          </div>
+          <button class="btn" id="btn-read" onclick="sbRun('read')">▶ Ejecutar</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Benchmark Mixto (Lectura+Escritura)</div>
+          <div class="form-row">
+            <div><label>Hilos</label><input id="sb-m-threads" type="number" value="10"></div>
+            <div><label>Tiempo (s)</label><input id="sb-m-time" type="number" value="60"></div>
+          </div>
+          <button class="btn btn-green" id="btn-mixed" onclick="sbRun('mixed')">▶ Ejecutar</button>
+        </div>
+      </div>
+      <br>
+      <div class="card" id="sb-status-card">
+        <div class="card-title">Estado / Resultado del Benchmark</div>
+        <div id="sb-status">Inicia un benchmark para ver el resultado aquí.</div>
+        <br><button class="btn" onclick="loadSbStatus()">↺ Refrescar estado</button>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // Ajusta la URL a la que se expone el contenedor API
+    const API = 'http://localhost:5001';
+
+    function show(name, btn) {
+      document.querySelectorAll('section').forEach(s => s.classList.remove('section-active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById('s-' + name).classList.add('section-active');
+      btn.classList.add('active');
+      const loaders = { health: loadHealth, replication: loadReplication, nodes: loadNodes };
+      if (loaders[name]) loaders[name]();
+    }
+
+    async function api(path, opts) {
+      const r = await fetch(API + path, opts);
+      return r.json();
+    }
+
+    // HEALTH
+    async function loadHealth() {
+      const d = await api('/health');
+      const badge = document.getElementById('cluster-badge');
+      badge.textContent = d.cluster_ok ? '● SALUDABLE' : '● DEGRADADO';
+      badge.style.cssText = d.cluster_ok
+        ? 'padding:.3rem .8rem;border-radius:999px;font-size:.8rem;font-weight:700;background:#1e3a2f;color:#22c55e;border:1px solid #22c55e'
+        : 'padding:.3rem .8rem;border-radius:999px;font-size:.8rem;font-weight:700;background:#3a1e1e;color:#ef4444;border:1px solid #ef4444';
+      document.getElementById('health-grid').innerHTML = d.nodes.map(n => `
+    <div class="card">
+      <div class="card-title">${n.node} <span class="tag">${n.role}</span></div>
+      <div style="margin-bottom:.75rem"><span class="badge ${n.status === 'UP' ? 'badge-up' : 'badge-down'}">● ${n.status}</span></div>
+      ${n.status === 'UP' ? `
+      <div class="metric"><span>Hostname</span><span class="metric-val">${n.hostname}</span></div>
+      <div class="metric"><span>Versión</span><span class="metric-val">${n.version}</span></div>
+      <div class="metric"><span>Read Only</span><span class="metric-val">${n.read_only ? '✅ Sí' : '❌ No'}</span></div>
+      ` : `<div style="color:#ef4444;font-size:.8rem">${n.error}</div>`}
+    </div>`).join('');
+    }
+
+    // REPLICATION
+    async function loadReplication() {
+      const d = await api('/replication');
+      document.getElementById('rep-grid').innerHTML = d.replicas.map(r => `
+    <div class="card">
+      <div class="card-title">${r.node}</div>
+      ${r.error ? `<div style="color:#ef4444">${r.error}</div>` : `
+      <div class="metric"><span>IO Running</span><span class="badge ${r.replica_io_running === 'Yes' ? 'badge-yes' : 'badge-no'}">${r.replica_io_running}</span></div>
+      <div class="metric"><span>SQL Running</span><span class="badge ${r.replica_sql_running === 'Yes' ? 'badge-yes' : 'badge-no'}">${r.replica_sql_running}</span></div>
+      <div class="metric"><span>Seconds Behind</span><span class="metric-val">${r.seconds_behind ?? 'N/A'}</span></div>
+      <div class="metric"><span>SSL</span><span class="metric-val">${r.source_ssl_allowed}</span></div>
+      <div class="metric"><span>IO Error</span><span style="color:#94a3b8;font-size:.75rem">${r.last_io_error}</span></div>
+      `}
+    </div>`).join('');
+    }
+
+    // BALANCE
+    async function loadBalance() {
+      const n = document.getElementById('bal-n').value;
+      const d = await api('/balance?n=' + n);
+      const total = d.total_connections;
+      const dist = d.distribution;
+      const max = Math.max(...Object.values(dist), 1);
+      let bars = Object.entries(dist).map(([node, count]) => `
+    <div class="bar-label">${node}: <strong>${count}</strong> conexiones (${Math.round(count / total * 100)}%)</div>
+    <div class="bar-bg"><div class="bar-fill" style="width:${count / max * 100}%">${count}</div></div>
+  `).join('');
+      let conns = d.connections.map(c => `
+    <div class="metric"><span>#${c.connection}</span><span class="metric-val">${c.served_by || c.error}</span></div>
+  `).join('');
+      document.getElementById('balance-result').innerHTML = `
+    <div class="grid">
+      <div class="card"><div class="card-title">Distribución</div><div class="bar-wrap">${bars}</div></div>
+      <div class="card" style="max-height:380px;overflow-y:auto"><div class="card-title">Conexiones individuales</div>${conns}</div>
+    </div>`;
+    }
+
+    // NODES
+    async function loadNodes() {
+      const d = await api('/nodes');
+      document.getElementById('nodes-body').innerHTML = d.map(n => `
+    <tr>
+      <td>${n.node}</td>
+      <td><span class="tag">${n.role}</span></td>
+      <td>${n.hostname || '<span style="color:#ef4444">' + n.error + '</span>'}</td>
+      <td>${n.server_id ?? '-'}</td>
+    </tr>`).join('');
+    }
+
+    // DATA
+    async function loadData(type, source) {
+      const d = await api('/data/' + type + '?source=' + source);
+      const items = d[type] || [];
+      const src = `<span class="tag">${d.source}</span>`;
+      let html = `<div class="card"><div class="card-title">${type} — ${src} — ${items.length} registros</div>`;
+      if (!items.length) { html += '<p style="color:#64748b">Sin datos.</p></div>'; }
+      else {
+        const keys = Object.keys(items[0]);
+        html += `<div style="overflow:auto"><table><thead><tr>${keys.map(k => `<th>${k}</th>`).join('')}</tr></thead><tbody>`;
+        html += items.map(row => `<tr>${keys.map(k => `<td>${row[k] ?? ''}</td>`).join('')}</tr>`).join('');
+        html += '</tbody></table></div></div>';
+      }
+      document.getElementById('data-result').innerHTML = html;
+    }
+
+    // SYSBENCH
+    async function sbPrepare() {
+      const btn = document.getElementById('btn-prepare');
+      btn.disabled = true; btn.textContent = '⏳ Preparando...';
+      await api('/sysbench/prepare', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows: +document.getElementById('sb-rows').value,
+          tables: +document.getElementById('sb-tables').value
+        })
+      });
+      btn.disabled = false; btn.textContent = '⚙ Preparar';
+      pollSbStatus();
+    }
+
+    async function sbRun(type) {
+      const isRead = type === 'read';
+      const btn = document.getElementById(isRead ? 'btn-read' : 'btn-mixed');
+      const threads = +document.getElementById(isRead ? 'sb-r-threads' : 'sb-m-threads').value;
+      const time = +document.getElementById(isRead ? 'sb-r-time' : 'sb-m-time').value;
+      btn.disabled = true; btn.textContent = '⏳ Ejecutando...';
+      await api('/sysbench/run-' + type, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threads, time })
+      });
+      btn.disabled = false; btn.textContent = '▶ Ejecutar';
+      pollSbStatus();
+    }
+
+    let pollInterval = null;
+    function pollSbStatus() {
+      loadSbStatus();
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        const d = await loadSbStatus();
+        if (d && !d.running) clearInterval(pollInterval);
+      }, 3000);
+    }
+
+    async function loadSbStatus() {
+      const d = await api('/sysbench/status');
+      const el = document.getElementById('sb-status');
+      if (d.running) {
+        el.innerHTML = '<div class="spinner" style="display:inline-block"></div> <span style="color:#f59e0b"> Benchmark en progreso... (auto-actualiza cada 3s)</span>';
+      } else if (d.result) {
+        el.innerHTML = `<pre>${d.result}</pre>`;
+        if (d.error) el.innerHTML += `<pre style="color:#ef4444">${d.error}</pre>`;
+      } else if (d.error) {
+        el.innerHTML = `<pre style="color:#ef4444">${d.error}</pre>`;
+      } else {
+        el.textContent = 'Inicia un benchmark para ver el resultado aquí.';
+      }
+      return d;
+    }
+
+    // Init
+    loadHealth();
+  </script>
+</body>
+
+</html>
